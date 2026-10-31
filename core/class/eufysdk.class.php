@@ -17,7 +17,8 @@ class eufysdk extends eqLogic {
         $python = dirname(__FILE__) . '/../python/.venv/bin/python';
         if (!is_executable($python)) throw new Exception('Dépendances non installées : lancer installation des dépendances');
         $script = dirname(__FILE__) . '/../python/bridge_cli.py';
-        $args = array($python, $script, '--url', self::bridgeUrl(), '--cmd', $command, '--fields', json_encode($fields, JSON_FORCE_OBJECT));
+        $fieldsJson = empty($fields) ? '{}' : json_encode($fields);
+        $args = array($python, $script, '--url', self::bridgeUrl(), '--cmd', $command, '--fields', $fieldsJson);
         $quoted = array_map('escapeshellarg', $args);
         $output = array(); $status = 0;
         exec(implode(' ', $quoted) . ' 2>&1', $output, $status);
