@@ -1,6 +1,0 @@
-{
- "id":"eufysdk","name":"Eufy SDK (Mega)",
- "description":{"fr_FR":"Intégration des équipements Eufy via le bridge mega-yfue : synchronisation, états, commandes et authentification à deux facteurs.","en_US":"Eufy integration through mega-yfue bridge with devices, properties and authentication."},
- "licence":"Apache-2.0","author":"Community prototype","require":"4.4","category":"security","hasDependency":true,"hasOwnDeamon":false,
- "language":["fr_FR","en_US"],"compatibility":["docker","diy","rpi","v4"]
-}
