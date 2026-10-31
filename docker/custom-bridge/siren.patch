@@ -1,8 +1,8 @@
 diff --git a/src/model/capabilities/siren.ts b/src/model/capabilities/siren.ts
-index cd84bc8..023e86f 100644
+index cd84bc8..8a7c1aa 100644
 --- a/src/model/capabilities/siren.ts
 +++ b/src/model/capabilities/siren.ts
-@@ -117,6 +117,29 @@ function isEvidencedAttachedCamera(ctx: CommandContext): boolean {
+@@ -117,6 +117,32 @@ function isEvidencedAttachedCamera(ctx: CommandContext): boolean {
    );
  }
  
@@ -10,16 +10,19 @@ index cd84bc8..023e86f 100644
 + * Standalone (self-station) Wall Light Cam device types — units that are their own station
 + * (`homeBaseAttached === false`) rather than hanging off a separate HomeBase.
 + *
-+ * UNVERIFIED on real hardware as of this patch. `eufy-security-client`'s own command table lists
-+ * `DeviceTriggerAlarmSound` / `StationTriggerAlarmSound` for both device types below, and the wire
-+ * it sends (`CMD_SET_DEVS_TONE_FILE` / 1202, an int+sub-value P2P frame to the device's own
-+ * channel) is exactly {@link SIREN_CMD.CAMERA_TONE}'s plain (non-S1-Pro) form — the same one an
-+ * attached camera already uses. This repo's own evidence model just never had a case for "the
-+ * camera is its own station", so the capability never surfaced. No param evidence is known for
-+ * this family yet (nothing has been captured proving the device reports anything before it will
-+ * accept the command), so this gates on device-type identity alone. If a live test against a real
-+ * unit shows no sound (or an error), drop this function, its two call sites below, and the
-+ * `selfStationWallLight` branch in `detection.detect`.
++ * UNVERIFIED on real hardware as of this patch, revision 2. Revision 1 routed this through
++ * {@link cameraAlarm} (`CAMERA_TONE`/1202, int-plus-string) and got `ok:true` from the bridge with
++ * no audible effect on a real T84A1 — the wrong wire, not a dead end: `eufy-security-client`'s own
++ * `Station.triggerStationAlarmSound` treats a self-station device as A STATION triggering ITS OWN
++ * alarm (`CMD_SET_TONE_FILE`/1201), not as a hub relaying to a different device (1202). Its
++ * `isIntegratedDeviceBySn` allowlist (explicitly marked `TODO: Update this implementation!` there)
++ * does not yet include the T84A1 prefix, so on reasonably current firmware that function takes the
++ * `SET_PAYLOAD`-wrapped branch — exactly {@link homeBaseAlarm}'s wire, already implemented and used
++ * by {@link isEvidencedStationAlarm} below. Routing here through "homebase" is therefore not a new
++ * wire, only a new condition admitting it. If this, too, has no audible effect, the next candidate
++ * is the OTHER `triggerStationAlarmSound` branch (`CMD_SET_TONE_FILE`, int-plus-string, `value: 2`,
++ * `valueSub: seconds`) — taken for firmware older than 2.0.7.9 or once Anker extends
++ * `isIntegratedDeviceBySn` to this prefix.
 + */
 +function isSelfStationWallLightCam(ctx: CommandContext): boolean {
 +  return (
@@ -32,15 +35,15 @@ index cd84bc8..023e86f 100644
  /** Whether a model-side record or bound context reports a specific parameter. */
  function reportsParam(
    source: { params?: Record<number, string>; paramIds?: ReadonlySet<number> },
-@@ -197,6 +220,7 @@ type AlarmOutputFamily = "homebase" | "camera" | "standalone";
+@@ -197,6 +223,7 @@ type AlarmOutputFamily = "homebase" | "camera" | "standalone";
  function alarmOutputFamily(ctx: CommandContext): AlarmOutputFamily | undefined {
    if (isEvidencedStationAlarm(ctx)) return "homebase";
    if (isEvidencedAttachedCamera(ctx)) return "camera";
-+  if (isSelfStationWallLightCam(ctx)) return "camera";
++  if (isSelfStationWallLightCam(ctx)) return "homebase";
    if (isEvidencedStandaloneSiren(ctx)) return "standalone";
    return undefined;
  }
-@@ -368,7 +392,7 @@ export const SIREN_MEMBERS = {
+@@ -368,7 +395,7 @@ export const SIREN_MEMBERS = {
            await sink.dispatch(triggerAlarm(validateTriggerDuration(seconds), ctx));
          },
        "Trigger the alarm for a positive whole-number duration in seconds.",
@@ -49,7 +52,7 @@ index cd84bc8..023e86f 100644
      ),
      args: [{ name: "seconds", kind: "seconds", min: 1, description: "A positive whole-number duration." }],
    },
-@@ -391,14 +415,22 @@ export const SIREN: CapabilityModule = {
+@@ -391,14 +418,22 @@ export const SIREN: CapabilityModule = {
    description: "Audible alarm output with evidence-bounded state, configuration, test, trigger, and stop members.",
    members: SIREN_MEMBERS,
    properties: propertiesOf(SIREN_MEMBERS),

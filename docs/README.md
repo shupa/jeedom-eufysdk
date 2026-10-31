@@ -125,15 +125,24 @@ intégré, seul le texte/la réponse peut être saisi.
 
 Le bridge officiel n'expose pas de commande d'alarme pour les Wall Light Cam autonomes (pas de
 capacité `siren` dans `devices.list`), car `@mega-yfue/eufy-sdk` ne reconnaît cette sirène que sur
-une caméra attachée à une HomeBase séparée. Or `eufy-security-client` (la lib bas niveau) liste bien
-`DeviceTriggerAlarmSound`/`StationTriggerAlarmSound` pour ce modèle, avec exactement le même type de
-trame P2P (`CMD_SET_DEVS_TONE_FILE`) qu'une caméra attachée — seul le cas « la caméra est sa propre
-station » n'est pas codé côté `@mega-yfue/eufy-sdk`.
+une caméra attachée à une HomeBase séparée. Or `eufy-security-client` (la lib bas niveau) traite un
+appareil auto-hébergé (sa propre « station ») comme une station déclenchant **sa propre** alarme
+(`CMD_SET_TONE_FILE`/1201), pas comme un hub qui relaie vers un autre appareil (1202) — seul ce cas
+« la caméra est sa propre station » n'est pas codé côté `@mega-yfue/eufy-sdk`.
 
 Le dossier `docker/custom-bridge/` contient un correctif (`siren.patch`) qui ajoute ce cas, plus une
 image Docker qui le construit (fork source de `eufy-sdk` + `ha-eufy-sdk-bridge`, patché puis
 compilé). **Ce correctif n'est pas vérifié sur du matériel réel** : rien ne garantit que la caméra
-sonne vraiment — seule la table de commandes de la lib le laisse penser.
+sonne vraiment.
+
+**Historique des essais sur un vrai T84A1 (Wall Light Cam S100)** :
+- *Révision 1* (trame `CAMERA_TONE`/1202, comme une caméra attachée) : la commande est acceptée par
+  le bridge (`ok:true`) mais **aucun son** — mauvaise trame pour ce modèle autonome.
+- *Révision 2* (trame `CMD_SET_TONE_FILE`/1201, la trame "alarme de MA propre station", via
+  `homeBaseAlarm` déjà existant dans `@mega-yfue/eufy-sdk`) : à tester.
+- Si ça échoue aussi, la piste suivante documentée dans `siren.patch` est l'autre variante de
+  `triggerStationAlarmSound` (même commande 1201, mais en forme int-plus-string avec `value:2` /
+  `valueSub:secondes`, utilisée sur firmware ancien ou appareils « intégrés » reconnus).
 
 ### Construire et tester
 
