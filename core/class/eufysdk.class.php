@@ -17,7 +17,7 @@ class eufysdk extends eqLogic {
         $python = dirname(__FILE__) . '/../python/.venv/bin/python';
         if (!is_executable($python)) throw new Exception('Dépendances non installées : lancer installation des dépendances');
         $script = dirname(__FILE__) . '/../python/bridge_cli.py';
-        $args = array($python, $script, '--url', self::bridgeUrl(), '--cmd', $command, '--fields', json_encode($fields));
+        $args = array($python, $script, '--url', self::bridgeUrl(), '--cmd', $command, '--fields', json_encode($fields, JSON_FORCE_OBJECT));
         $quoted = array_map('escapeshellarg', $args);
         $output = array(); $status = 0;
         exec(implode(' ', $quoted) . ' 2>&1', $output, $status);
@@ -63,8 +63,7 @@ class eufysdk extends eqLogic {
     public static function dockerBin() {
         static $bin = null;
         if ($bin !== null) return $bin;
-        $path = trim((string) shell_exec('command -v docker 2>/dev/null'));
-        $bin = $path;
+        $bin = trim(self::run('command -v docker 2>/dev/null')['output']);
         return $bin;
     }
     public static function dockerComposeCmd() {
@@ -74,14 +73,19 @@ class eufysdk extends eqLogic {
         $base = $prefix . escapeshellarg($docker) . ' compose';
         $check = self::run($base . ' version');
         if ($check['status'] === 0) return $base;
-        $standalone = trim((string) shell_exec('command -v docker-compose 2>/dev/null'));
+        $standalone = trim(self::run('command -v docker-compose 2>/dev/null')['output']);
         if ($standalone === '') return null;
         $base = $prefix . escapeshellarg($standalone);
         $check = self::run($base . ' version');
         return $check['status'] === 0 ? $base : null;
     }
     public static function dockerAvailable() {
-        return self::dockerComposeCmd() !== null;
+        try {
+            return self::dockerComposeCmd() !== null;
+        } catch (Throwable $e) {
+            log::add('eufysdk', 'error', 'dockerAvailable: ' . $e->getMessage());
+            return false;
+        }
     }
     public static function dockerCompose($args) {
         $compose = self::dockerComposeCmd();
@@ -141,18 +145,25 @@ class eufysdk extends eqLogic {
     }
     public static function deamon_info() {
         $return = array('log' => 'eufysdk', 'state' => 'nok', 'launchable' => 'ok');
-        if (!self::dockerAvailable()) {
+        try {
+            if (!self::dockerAvailable()) {
+                $return['launchable'] = 'nok';
+                $return['launchable_message'] = __('Docker (ou docker compose) est introuvable ou inaccessible pour l\'utilisateur du serveur web. Installer Docker et autoriser www-data (groupe docker ou sudoers), voir documentation.', __FILE__);
+                return $return;
+            }
+            if (trim((string) config::byKey('eufy_email', 'eufysdk')) === '') {
+                $return['launchable'] = 'nok';
+                $return['launchable_message'] = __('Identifiants Eufy manquants dans la configuration du plugin', __FILE__);
+                return $return;
+            }
+            $return['state'] = self::containerRunning() ? 'ok' : 'nok';
+            return $return;
+        } catch (Throwable $e) {
+            log::add('eufysdk', 'error', 'deamon_info: ' . $e->getMessage());
             $return['launchable'] = 'nok';
-            $return['launchable_message'] = __('Docker (ou docker compose) est introuvable ou inaccessible pour l\'utilisateur du serveur web. Installer Docker et autoriser www-data (groupe docker ou sudoers), voir documentation.', __FILE__);
+            $return['launchable_message'] = __('Erreur interne : ', __FILE__) . $e->getMessage();
             return $return;
         }
-        if (trim((string) config::byKey('eufy_email', 'eufysdk')) === '') {
-            $return['launchable'] = 'nok';
-            $return['launchable_message'] = __('Identifiants Eufy manquants dans la configuration du plugin', __FILE__);
-            return $return;
-        }
-        $return['state'] = self::containerRunning() ? 'ok' : 'nok';
-        return $return;
     }
     public static function deamonRunning() {
         $info = self::deamon_info();
