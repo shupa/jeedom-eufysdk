@@ -10,19 +10,53 @@ Ce plugin **distinct** (`eufysdk`) ne remplace pas `eufy` et utilise le bridge o
 
 ## Démarrer le bridge
 
-Copier le dossier `docker` dans un répertoire persistant **hors du dossier Jeedom**, puis :
+### Cas A — Jeedom et Docker sur la même machine (géré depuis le plugin)
+
+Depuis Jeedom 4.4+/v4, le plugin peut démarrer, arrêter et configurer lui-même le bridge
+Docker, à condition que l'utilisateur du serveur web (`www-data`) puisse exécuter `docker` :
 
 ```bash
-cp .env.example .env
-chmod 600 .env
-# éditer .env avec l'identifiant, mot de passe Eufy, pays BE
-docker compose up -d
-curl http://127.0.0.1:3000/healthz
+sudo usermod -aG docker www-data
+# puis redémarrer apache/php-fpm et le démon Jeedom pour appliquer le nouveau groupe
 ```
 
-La variable `EUFY_COUNTRY` concerne le **pays du compte Eufy**, pas forcément le pays où tourne Jeedom.
+Si cela n'est pas souhaité, configurer à la place le mécanisme sudoers de Jeedom pour
+autoriser `www-data` à lancer `docker` sans mot de passe.
 
-Le réseau `host` simplifie l'accès au service mais **expose aussi les ports du bridge** sur les interfaces de la machine. Pare-feu requis : **ne pas exposer le port 3000 sur Internet**. Sur un NAS distinct, saisir son IP LAN dans la configuration du plugin.
+Ensuite, dans **Plugins > Sécurité > Eufy SDK (Mega) > Configuration** :
+
+1. Saisir l'email, le mot de passe et le pays (`EUFY_COUNTRY`, le pays **du compte Eufy**,
+   pas forcément celui où tourne Jeedom) du compte Eufy.
+2. Cliquer sur **Enregistrer et (re)démarrer le bridge** : le plugin écrit `docker/.env`
+   (droits `600`, mot de passe stocké chiffré côté Jeedom via `utils::encrypt`) et lance
+   `docker compose up -d` depuis son propre dossier `docker/`.
+3. L'état du bridge (OK/NOK) s'affiche sur la page ; **Démarrer/Arrêter le bridge** et
+   **Synchroniser maintenant** permettent de piloter le conteneur sans terminal.
+4. En cas de demande de code 2FA ou de CAPTCHA, utiliser les champs dédiés
+   (**Code reçu par 2FA** / **Réponse CAPTCHA**) puis **Valider** ; **Tester la connexion**
+   affiche l'état d'authentification brut renvoyé par le bridge.
+
+Le réseau `host` du conteneur simplifie l'accès au service mais **expose aussi les ports du
+bridge** sur les interfaces de la machine. Pare-feu requis : **ne pas exposer le port 3000
+sur Internet**.
+
+### Cas B — Bridge sur une machine distincte (VM dédiée, NAS/Synology)
+
+Si Jeedom ne peut pas piloter le démon Docker (hôte différent), laisser les champs
+email/mot de passe vides côté Jeedom (les boutons démarrer/arrêter afficheront alors
+« Docker introuvable ou inaccessible », ce qui est normal) et déployer le bridge
+manuellement sur cette machine :
+
+```bash
+cp docker/.env.example docker/.env
+chmod 600 docker/.env
+# éditer docker/.env avec l'identifiant, le mot de passe Eufy, le pays
+docker compose -f docker/docker-compose.yml up -d
+curl http://<ip-du-nas>:3000/healthz
+```
+
+Puis saisir dans la configuration du plugin l'IP LAN et le port de cette machine
+(`bridge_host` / `bridge_port`).
 
 ## Installer le plugin
 
@@ -49,7 +83,10 @@ sudo -u www-data /var/www/html/plugins/eufysdk/core/python/.venv/bin/python \
  --url ws://127.0.0.1:3000/ws --cmd auth.submit --fields '{"code":"123456"}'
 ```
 
-Pour un CAPTCHA, envoyer `{"captcha":"..."}`. L'interface CAPTCHA avec affichage image n'est pas encore implémentée dans le plugin. Le bridge peut fournir l'image via `auth.status`.
+Pour un CAPTCHA, envoyer `{"captcha":"..."}`. Ces deux opérations sont aussi disponibles
+depuis la configuration du plugin (champs **Code reçu par 2FA** / **Réponse CAPTCHA**),
+sans passer par le terminal ; l'affichage de l'image CAPTCHA elle-même n'est pas encore
+intégré, seul le texte/la réponse peut être saisi.
 
 ## Fonctionnalités v0.1
 
@@ -58,12 +95,18 @@ Pour un CAPTCHA, envoyer `{"captcha":"..."}`. L'interface CAPTCHA avec affichage
 - Commandes `ON`/`OFF` automatiques pour les propriétés booléennes modifiables du manifeste
 - URL de snapshot en mode `stored` (réduit les réveils de caméras sur batterie)
 - État d'authentification, dernière synchro et logs
+- Saisie des identifiants Eufy (email/mot de passe/pays) et pilotage du bridge Docker
+  (démarrer/arrêter/synchroniser, test de connexion, 2FA/CAPTCHA) directement depuis la
+  configuration du plugin, lorsque Docker est accessible sur la machine Jeedom
 
 ## Limitations actuelles
 
 - **Pas d'événements instantanés** (push motion, sonnette), ni WebRTC/RTSP intégré à la tuile Jeedom.
 - Pas encore de commandes pour les sélecteurs/numériques ni de prise en charge complète des `decodedState`.
-- Pas encore de formulaire 2FA/CAPTCHA depuis l'interface Jeedom.
+- Le pilotage du bridge depuis Jeedom nécessite que `www-data` puisse exécuter `docker` sur
+  la même machine ; sur une topologie distribuée (NAS distinct), revenir à la configuration
+  manuelle (cas B ci-dessus).
+- Pas d'affichage de l'image CAPTCHA dans l'interface Jeedom (seule la réponse texte peut être envoyée).
 - Aucun test avec tes caméras réelles ; vérifier les commandes avant de les utiliser dans des scénarios de sécurité.
 - Le script Python établit une nouvelle connexion WebSocket à chaque requête. Cette V0 n'est pas destinée aux gros parcs : optimisation ultérieure par démon persistent.
 - Des changements de protocole dans le bridge peuvent nécessiter une adaptation.

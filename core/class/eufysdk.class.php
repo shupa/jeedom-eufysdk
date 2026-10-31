@@ -33,6 +33,157 @@ class eufysdk extends eqLogic {
     public static function dependancy_install() {
         return array('script' => dirname(__FILE__) . '/../../plugin_info/install_dependencies.sh', 'log' => 'eufysdk_dep');
     }
+
+    /* ---------------------------------------------------------------------
+     * Gestion du bridge Docker (mega-yfue) directement depuis le plugin.
+     * Le conteneur est traité comme le "démon" du plugin (hasOwnDeamon) :
+     * - deamon_info()/deamon_start()/deamon_stop() suivent la convention Jeedom.
+     * - Nécessite que docker/docker compose soit accessible par l'utilisateur
+     *   du serveur web (groupe docker, ou sudoers configuré côté Jeedom).
+     * Si le bridge tourne sur une machine distincte (NAS, autre VM), cette
+     * gestion automatique ne s'applique pas : garder les champs email/mot de
+     * passe vides et continuer la configuration manuelle via docker compose
+     * (voir docs/README.md), seuls bridge_host/bridge_port sont alors utiles.
+     * ------------------------------------------------------------------- */
+
+    public static function pluginDir() {
+        return realpath(dirname(__FILE__) . '/../..');
+    }
+    public static function dockerComposeFile() {
+        return self::pluginDir() . '/docker/docker-compose.yml';
+    }
+    public static function dockerEnvFile() {
+        return self::pluginDir() . '/docker/.env';
+    }
+    private static function run($cmd) {
+        $output = array(); $status = 0;
+        exec($cmd . ' 2>&1', $output, $status);
+        return array('status' => $status, 'output' => implode("\n", $output));
+    }
+    public static function dockerBin() {
+        static $bin = null;
+        if ($bin !== null) return $bin;
+        $path = trim((string) shell_exec('command -v docker 2>/dev/null'));
+        $bin = $path;
+        return $bin;
+    }
+    public static function dockerComposeCmd() {
+        $docker = self::dockerBin();
+        if ($docker === '') return null;
+        $prefix = system::getCmdSudo();
+        $base = $prefix . escapeshellarg($docker) . ' compose';
+        $check = self::run($base . ' version');
+        if ($check['status'] === 0) return $base;
+        $standalone = trim((string) shell_exec('command -v docker-compose 2>/dev/null'));
+        if ($standalone === '') return null;
+        $base = $prefix . escapeshellarg($standalone);
+        $check = self::run($base . ' version');
+        return $check['status'] === 0 ? $base : null;
+    }
+    public static function dockerAvailable() {
+        return self::dockerComposeCmd() !== null;
+    }
+    public static function dockerCompose($args) {
+        $compose = self::dockerComposeCmd();
+        if ($compose === null) throw new Exception('Docker (ou docker compose) introuvable ou inaccessible pour l\'utilisateur du serveur web');
+        $dir = self::pluginDir() . '/docker';
+        $cmd = $compose
+            . ' --project-directory ' . escapeshellarg($dir)
+            . ' -f ' . escapeshellarg(self::dockerComposeFile())
+            . ' --env-file ' . escapeshellarg(self::dockerEnvFile())
+            . ' ' . $args;
+        $result = self::run($cmd);
+        log::add('eufysdk', 'info', 'docker compose ' . $args . ' => ' . $result['output']);
+        if ($result['status'] !== 0) throw new Exception('Commande docker en échec : ' . $result['output']);
+        return $result['output'];
+    }
+    public static function containerRunning() {
+        try {
+            $ids = trim(self::dockerCompose('ps -q'));
+            if ($ids === '') return false;
+            $id = strtok($ids, "\n");
+            $docker = self::dockerBin();
+            $prefix = system::getCmdSudo();
+            $result = self::run($prefix . escapeshellarg($docker) . ' inspect -f ' . escapeshellarg('{{.State.Running}}') . ' ' . escapeshellarg($id));
+            return trim($result['output']) === 'true';
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+    public static function writeBridgeEnv() {
+        $email = trim((string) config::byKey('eufy_email', 'eufysdk'));
+        $password = (string) utils::decrypt(config::byKey('eufy_password', 'eufysdk'));
+        $country = strtoupper(trim((string) config::byKey('eufy_country', 'eufysdk', 'BE')));
+        if ($email === '' || $password === '') throw new Exception('Identifiants Eufy manquants');
+        if (!preg_match('/^[A-Z]{2}$/', $country)) throw new Exception('Code pays Eufy invalide (2 lettres, ex: BE)');
+        $strip = function ($v) { return str_replace(array("\r", "\n"), '', $v); };
+        $content = 'EUFY_EMAIL=' . $strip($email) . "\n"
+            . 'EUFY_PASSWORD=' . $strip($password) . "\n"
+            . 'EUFY_COUNTRY=' . $strip($country) . "\n";
+        $file = self::dockerEnvFile();
+        file_put_contents($file, $content);
+        chmod($file, 0600);
+    }
+    public static function saveCredentials($email, $password, $country) {
+        $email = trim((string) $email);
+        $country = strtoupper(trim((string) $country));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Email Eufy invalide');
+        if (!preg_match('/^[A-Z]{2}$/', $country)) throw new Exception('Code pays invalide (2 lettres, ex: BE, FR)');
+        $password = trim((string) $password);
+        if ($password !== '') {
+            config::save('eufy_password', utils::encrypt($password), 'eufysdk');
+        } elseif (trim((string) utils::decrypt(config::byKey('eufy_password', 'eufysdk'))) === '') {
+            throw new Exception('Mot de passe Eufy requis');
+        }
+        config::save('eufy_email', $email, 'eufysdk');
+        config::save('eufy_country', $country, 'eufysdk');
+        return self::deamon_start();
+    }
+    public static function deamon_info() {
+        $return = array('log' => 'eufysdk', 'state' => 'nok', 'launchable' => 'ok');
+        if (!self::dockerAvailable()) {
+            $return['launchable'] = 'nok';
+            $return['launchable_message'] = __('Docker (ou docker compose) est introuvable ou inaccessible pour l\'utilisateur du serveur web. Installer Docker et autoriser www-data (groupe docker ou sudoers), voir documentation.', __FILE__);
+            return $return;
+        }
+        if (trim((string) config::byKey('eufy_email', 'eufysdk')) === '') {
+            $return['launchable'] = 'nok';
+            $return['launchable_message'] = __('Identifiants Eufy manquants dans la configuration du plugin', __FILE__);
+            return $return;
+        }
+        $return['state'] = self::containerRunning() ? 'ok' : 'nok';
+        return $return;
+    }
+    public static function deamonRunning() {
+        $info = self::deamon_info();
+        return $info['state'] === 'ok';
+    }
+    public static function deamon_start() {
+        $info = self::deamon_info();
+        if ($info['launchable'] !== 'ok') throw new Exception($info['launchable_message']);
+        self::writeBridgeEnv();
+        self::dockerCompose('up -d');
+        $i = 0;
+        while ($i < 30) {
+            if (self::containerRunning()) break;
+            sleep(1);
+            $i++;
+        }
+        if (!self::containerRunning()) {
+            log::add('eufysdk', 'error', __('Impossible de démarrer le bridge Docker, consulter le log', __FILE__));
+            return false;
+        }
+        log::add('eufysdk', 'info', 'Bridge Eufy démarré');
+        return true;
+    }
+    public static function deamon_stop() {
+        try {
+            self::dockerCompose('down');
+        } catch (Throwable $e) {
+            log::add('eufysdk', 'warning', $e->getMessage());
+        }
+    }
+
     private static function syncActions($eq, $sn) {
         $manifest = self::request('device.properties', array('sn' => $sn));
         foreach (($manifest['properties'] ?? array()) as $prop) {
