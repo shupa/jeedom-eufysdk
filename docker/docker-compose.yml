@@ -1,0 +1,11 @@
+services:
+  eufy-sdk-bridge:
+    image: ghcr.io/mega-yfue/ha-eufy-sdk-bridge:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      EUFY_EMAIL: ${EUFY_EMAIL}
+      EUFY_PASSWORD: ${EUFY_PASSWORD}
+      EUFY_COUNTRY: ${EUFY_COUNTRY:-BE}
+    volumes:
+      - ./data:/app/data
