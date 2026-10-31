@@ -121,6 +121,57 @@ intégré, seul le texte/la réponse peut être saisi.
 - Le script Python établit une nouvelle connexion WebSocket à chaque requête. Cette V0 n'est pas destinée aux gros parcs : optimisation ultérieure par démon persistent.
 - Des changements de protocole dans le bridge peuvent nécessiter une adaptation.
 
+## Essai expérimental : alarme sur Wall Light Cam (T84A1 / T84A0 / S100)
+
+Le bridge officiel n'expose pas de commande d'alarme pour les Wall Light Cam autonomes (pas de
+capacité `siren` dans `devices.list`), car `@mega-yfue/eufy-sdk` ne reconnaît cette sirène que sur
+une caméra attachée à une HomeBase séparée. Or `eufy-security-client` (la lib bas niveau) liste bien
+`DeviceTriggerAlarmSound`/`StationTriggerAlarmSound` pour ce modèle, avec exactement le même type de
+trame P2P (`CMD_SET_DEVS_TONE_FILE`) qu'une caméra attachée — seul le cas « la caméra est sa propre
+station » n'est pas codé côté `@mega-yfue/eufy-sdk`.
+
+Le dossier `docker/custom-bridge/` contient un correctif (`siren.patch`) qui ajoute ce cas, plus une
+image Docker qui le construit (fork source de `eufy-sdk` + `ha-eufy-sdk-bridge`, patché puis
+compilé). **Ce correctif n'est pas vérifié sur du matériel réel** : rien ne garantit que la caméra
+sonne vraiment — seule la table de commandes de la lib le laisse penser.
+
+### Construire et tester
+
+```bash
+cd docker
+cp .env.example .env   # si pas déjà fait ; EUFY_EMAIL/PASSWORD/COUNTRY/BRIDGE_PORT
+docker compose -f docker-compose.custom-bridge.yml up -d --build
+curl http://127.0.0.1:${BRIDGE_PORT:-3001}/healthz
+```
+
+Puis vérifier que la capacité apparaît et tester le déclenchement :
+
+```bash
+sudo -u www-data /var/www/html/plugins/eufysdk/core/python/.venv/bin/python \
+  /var/www/html/plugins/eufysdk/core/python/bridge_cli.py \
+  --url ws://127.0.0.1:3001/ws --cmd devices.list
+# chercher "siren" dans les capabilities de la caméra, puis :
+sudo -u www-data /var/www/html/plugins/eufysdk/core/python/.venv/bin/python \
+  /var/www/html/plugins/eufysdk/core/python/bridge_cli.py \
+  --url ws://127.0.0.1:3001/ws --cmd device.action \
+  --fields '{"sn":"<SN_DE_LA_CAM>","action":"trigger","args":[5]}'
+```
+
+**Si la caméra sonne vraiment** : le plugin Jeedom n'a besoin d'aucune modification — `eufysdk::syncActions()`
+crée déjà les commandes « Déclencher l'alarme » / « Arrêter l'alarme » dès que le bridge annonce
+`siren` dans les capacités de l'équipement ; il suffit de pointer `docker-compose.yml` (ou la config
+du plugin) vers cette image custom au lieu de l'image publique, et de resynchroniser.
+
+**Si elle ne sonne pas (ou erreur)** : c'est que la caméra a bien besoin d'un chemin différent
+(peut-être un autre `CommandType`, ou pas de sirène matérielle du tout sur ce modèle) — revenir à
+l'image publique (`docker-compose.yml`) et ouvrir un ticket upstream avec le résultat du test, sur
+https://github.com/mega-yfue/eufy-sdk, pour que les mainteneurs (qui ont accès à du vrai matériel
+pour vérifier) tranchent.
+
+Ce correctif n'est volontairement **pas** branché sur le pilotage automatique du bridge depuis
+Jeedom (`eufysdk::deamon_start()` utilise toujours `docker/docker-compose.yml`, l'image publique) :
+c'est une piste à tester manuellement, pas un comportement par défaut tant qu'il n'est pas vérifié.
+
 ## Vérification rapide
 
 ```bash

@@ -1,0 +1,13 @@
+services:
+  eufy-sdk-bridge:
+    build:
+      context: ./custom-bridge
+    restart: unless-stopped
+    ports:
+      - "${BRIDGE_PORT:-3001}:3000"
+    environment:
+      EUFY_EMAIL: ${EUFY_EMAIL}
+      EUFY_PASSWORD: ${EUFY_PASSWORD}
+      EUFY_COUNTRY: ${EUFY_COUNTRY:-BE}
+    volumes:
+      - ./data:/app/data

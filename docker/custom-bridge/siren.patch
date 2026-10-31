@@ -1,0 +1,76 @@
+diff --git a/src/model/capabilities/siren.ts b/src/model/capabilities/siren.ts
+index cd84bc8..023e86f 100644
+--- a/src/model/capabilities/siren.ts
++++ b/src/model/capabilities/siren.ts
+@@ -117,6 +117,29 @@ function isEvidencedAttachedCamera(ctx: CommandContext): boolean {
+   );
+ }
+ 
++/**
++ * Standalone (self-station) Wall Light Cam device types — units that are their own station
++ * (`homeBaseAttached === false`) rather than hanging off a separate HomeBase.
++ *
++ * UNVERIFIED on real hardware as of this patch. `eufy-security-client`'s own command table lists
++ * `DeviceTriggerAlarmSound` / `StationTriggerAlarmSound` for both device types below, and the wire
++ * it sends (`CMD_SET_DEVS_TONE_FILE` / 1202, an int+sub-value P2P frame to the device's own
++ * channel) is exactly {@link SIREN_CMD.CAMERA_TONE}'s plain (non-S1-Pro) form — the same one an
++ * attached camera already uses. This repo's own evidence model just never had a case for "the
++ * camera is its own station", so the capability never surfaced. No param evidence is known for
++ * this family yet (nothing has been captured proving the device reports anything before it will
++ * accept the command), so this gates on device-type identity alone. If a live test against a real
++ * unit shows no sound (or an error), drop this function, its two call sites below, and the
++ * `selfStationWallLight` branch in `detection.detect`.
++ */
++function isSelfStationWallLightCam(ctx: CommandContext): boolean {
++  return (
++    ctx.codec === "camera" &&
++    ctx.homeBaseAttached === false &&
++    (ctx.deviceType === DeviceType.WALL_LIGHT_CAM || ctx.deviceType === DeviceType.WALL_LIGHT_CAM_81A0)
++  );
++}
++
+ /** Whether a model-side record or bound context reports a specific parameter. */
+ function reportsParam(
+   source: { params?: Record<number, string>; paramIds?: ReadonlySet<number> },
+@@ -197,6 +220,7 @@ type AlarmOutputFamily = "homebase" | "camera" | "standalone";
+ function alarmOutputFamily(ctx: CommandContext): AlarmOutputFamily | undefined {
+   if (isEvidencedStationAlarm(ctx)) return "homebase";
+   if (isEvidencedAttachedCamera(ctx)) return "camera";
++  if (isSelfStationWallLightCam(ctx)) return "camera";
+   if (isEvidencedStandaloneSiren(ctx)) return "standalone";
+   return undefined;
+ }
+@@ -368,7 +392,7 @@ export const SIREN_MEMBERS = {
+           await sink.dispatch(triggerAlarm(validateTriggerDuration(seconds), ctx));
+         },
+       "Trigger the alarm for a positive whole-number duration in seconds.",
+-      (ctx) => isEvidencedStationAlarm(ctx) || isEvidencedAttachedCamera(ctx),
++      (ctx) => isEvidencedStationAlarm(ctx) || isEvidencedAttachedCamera(ctx) || isSelfStationWallLightCam(ctx),
+     ),
+     args: [{ name: "seconds", kind: "seconds", min: 1, description: "A positive whole-number duration." }],
+   },
+@@ -391,14 +415,22 @@ export const SIREN: CapabilityModule = {
+   description: "Audible alarm output with evidence-bounded state, configuration, test, trigger, and stop members.",
+   members: SIREN_MEMBERS,
+   properties: propertiesOf(SIREN_MEMBERS),
+-  /** Detection uses reported evidence and topology; no model string or device type admits a wire. */
++  /**
++   * Detection uses reported evidence and topology; no model string or device type admits a wire —
++   * except the self-station Wall Light Cam branch below, which is device-type-only (see
++   * {@link isSelfStationWallLightCam}: no param evidence is known for it yet).
++   */
+   detection: {
+     detect: (record, codec) => {
+       const homeBase = record.deviceType !== undefined && HOMEBASE_TYPES.has(record.deviceType);
+       const homeBaseAlarm = homeBase && HUB_ALARM_EVIDENCE.some((param) => Object.hasOwn(record.params ?? {}, param));
+       const attachedCameraAlarm = codec === "camera" && !!record.parentSn && hasReportedEasSwitch(record);
++      const selfStationWallLightAlarm =
++        codec === "camera" &&
++        !record.parentSn &&
++        (record.deviceType === DeviceType.WALL_LIGHT_CAM || record.deviceType === DeviceType.WALL_LIGHT_CAM_81A0);
+       const standaloneSiren = codec === "sensor" && hasStandaloneSirenEvidence(record);
+-      return homeBaseAlarm || attachedCameraAlarm || standaloneSiren;
++      return homeBaseAlarm || attachedCameraAlarm || selfStationWallLightAlarm || standaloneSiren;
+     },
+   },
+ };
