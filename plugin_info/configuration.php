@@ -54,3 +54,96 @@ $eufy_country = config::byKey('eufy_country', 'eufysdk', 'BE');
  </fieldset>
 </form>
 <p>Si le bridge est géré sur une autre machine, les boutons démarrer/arrêter échoueront (Docker non accessible depuis Jeedom) : c'est attendu, continuer alors via <code>docker compose</code> directement sur cette machine. Voir <code>docs/README.md</code>.</p>
+<script>
+(function () {
+  function eufysdkAjax(action, data, onSuccess) {
+    data = data || {}
+    data.action = action
+    $.ajax({
+      type: 'POST',
+      url: 'plugins/eufysdk/core/ajax/eufysdk.ajax.php',
+      data: data,
+      dataType: 'json',
+      error: function (request, status, error) {
+        handleAjaxError(request, status, error)
+      },
+      success: function (data) {
+        if (data.state != 'ok') {
+          $('#div_alert').showAlert({ message: data.result, level: 'danger' })
+          return
+        }
+        if (typeof onSuccess === 'function') onSuccess(data.result)
+      }
+    })
+  }
+
+  function refreshStatus() {
+    eufysdkAjax('daemonStatus', {}, function (result) {
+      var badge = $('#eufysdk_daemon_state')
+      if (result.state == 'ok') {
+        badge.removeClass('label-danger').addClass('label-success').text('OK')
+      } else {
+        badge.removeClass('label-success').addClass('label-danger').text('NOK')
+      }
+      $('#eufysdk_daemon_message').text(result.launchable_message || '')
+    })
+  }
+
+  $('#bt_eufysdk_saveCredentials').off('click').on('click', function () {
+    eufysdkAjax('saveCredentials', {
+      email: $('#eufysdk_email').val(),
+      password: $('#eufysdk_password').val(),
+      country: $('#eufysdk_country').val()
+    }, function () {
+      $('#div_alert').showAlert({ message: '{{Identifiants enregistrés, bridge en cours de (re)démarrage}}', level: 'success' })
+      $('#eufysdk_password').val('')
+      setTimeout(refreshStatus, 2000)
+    })
+  })
+
+  $('#bt_eufysdk_daemonStart').off('click').on('click', function () {
+    eufysdkAjax('daemonStart', {}, function () {
+      $('#div_alert').showAlert({ message: '{{Bridge démarré}}', level: 'success' })
+      refreshStatus()
+    })
+  })
+
+  $('#bt_eufysdk_daemonStop').off('click').on('click', function () {
+    eufysdkAjax('daemonStop', {}, function () {
+      $('#div_alert').showAlert({ message: '{{Bridge arrêté}}', level: 'success' })
+      refreshStatus()
+    })
+  })
+
+  $('#bt_eufysdk_testAuth').off('click').on('click', function () {
+    eufysdkAjax('authStatus', {}, function (result) {
+      $('#eufysdk_auth_result').text(JSON.stringify(result))
+    })
+  })
+
+  $('#bt_eufysdk_authSubmit').off('click').on('click', function () {
+    eufysdkAjax('authSubmit', {
+      code: $('#eufysdk_auth_code').val(),
+      captcha: $('#eufysdk_auth_captcha').val()
+    }, function (result) {
+      $('#div_alert').showAlert({ message: '{{Code envoyé}}', level: 'success' })
+      $('#eufysdk_auth_result').text(JSON.stringify(result))
+      $('#eufysdk_auth_code').val('')
+      $('#eufysdk_auth_captcha').val('')
+    })
+  })
+
+  $('#bt_eufysdk_authRetrigger').off('click').on('click', function () {
+    eufysdkAjax('authRetrigger', {}, function (result) {
+      $('#div_alert').showAlert({ message: '{{Nouvelle demande envoyée}}', level: 'success' })
+      $('#eufysdk_auth_result').text(JSON.stringify(result))
+    })
+  })
+
+  $('#bt_eufysdk_syncNow').off('click').on('click', function () {
+    eufysdkAjax('syncNow', {}, function () {
+      $('#div_alert').showAlert({ message: '{{Synchronisation lancée}}', level: 'success' })
+    })
+  })
+})()
+</script>
