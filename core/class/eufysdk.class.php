@@ -198,7 +198,7 @@ class eufysdk extends eqLogic {
         }
     }
 
-    private static function syncActions($eq, $sn) {
+    private static function syncActions($eq, $sn, $capabilities = array()) {
         $manifest = self::request('device.properties', array('sn' => $sn));
         foreach (($manifest['properties'] ?? array()) as $prop) {
             if (empty($prop['writable']) || ($prop['type'] ?? '') !== 'bool' || empty($prop['name'])) continue;
@@ -214,6 +214,40 @@ class eufysdk extends eqLogic {
                 $cmd->setConfiguration('property', $prop['name']);
                 $cmd->setConfiguration('value', $on ? 1 : 0);
                 $cmd->setIsVisible(1); $cmd->save();
+            }
+        }
+        // Siren (alarme) : ce n'est pas une propriété mais une "action" (device.action),
+        // disponible uniquement si le bridge annonce la capacité 'siren' (HomeBase, ou
+        // caméra rattachée à une HomeBase qui expose le slot EAS).
+        if (in_array('siren', $capabilities, true)) {
+            $cmd = eufysdkCmd::byEqLogicIdAndLogicalId($eq->getId(), 'action:siren:trigger');
+            if (!is_object($cmd)) {
+                $cmd = new eufysdkCmd();
+                $cmd->setEqLogic_id($eq->getId());
+                $cmd->setLogicalId('action:siren:trigger');
+                $cmd->setName('Déclencher l\'alarme');
+                $cmd->setType('action');
+                $cmd->setSubType('slider');
+                $cmd->setConfiguration('bridge_action', 'device.action');
+                $cmd->setConfiguration('deviceAction', 'trigger');
+                $cmd->setConfiguration('minValue', 1);
+                $cmd->setConfiguration('maxValue', 300);
+                $cmd->setUnite('s');
+                $cmd->setIsVisible(1);
+                $cmd->save();
+            }
+            $cmd = eufysdkCmd::byEqLogicIdAndLogicalId($eq->getId(), 'action:siren:stop');
+            if (!is_object($cmd)) {
+                $cmd = new eufysdkCmd();
+                $cmd->setEqLogic_id($eq->getId());
+                $cmd->setLogicalId('action:siren:stop');
+                $cmd->setName('Arrêter l\'alarme');
+                $cmd->setType('action');
+                $cmd->setSubType('other');
+                $cmd->setConfiguration('bridge_action', 'device.action');
+                $cmd->setConfiguration('deviceAction', 'stop');
+                $cmd->setIsVisible(1);
+                $cmd->save();
             }
         }
     }
@@ -241,7 +275,7 @@ class eufysdk extends eqLogic {
             $eq->setConfiguration('model', $device['model'] ?? '');
             $eq->setConfiguration('capabilities', $device['capabilities'] ?? array());
             $eq->save();
-            try { self::syncActions($eq, $sn); } catch (Throwable $e) { log::add('eufysdk', 'warning', 'Manifest ' . $sn . ' : ' . $e->getMessage()); }
+            try { self::syncActions($eq, $sn, $device['capabilities'] ?? array()); } catch (Throwable $e) { log::add('eufysdk', 'warning', 'Manifest ' . $sn . ' : ' . $e->getMessage()); }
             $states = $device['state'] ?? array();
             if (isset($device['streaming'])) $states['streaming'] = $device['streaming'];
             foreach ($states as $key => $value) {
@@ -283,11 +317,21 @@ class eufysdkCmd extends cmd {
     public function execute($_options = array()) {
         if ($this->getType() !== 'action') return null;
         $action = $this->getConfiguration('bridge_action', '');
-        if ($action !== 'device.set') throw new Exception('Action non autorisée');
-        $fields = array('sn' => $this->getEqLogic()->getLogicalId(), 'name' => $this->getConfiguration('property'));
-        if ($this->getSubType() === 'slider') $fields['value'] = (float)($_options['slider'] ?? 0);
-        elseif ($this->getSubType() === 'select') $fields['value'] = $_options['select'] ?? '';
-        else $fields['value'] = (bool)$this->getConfiguration('value', false);
-        return eufysdk::request('device.set', $fields);
+        $sn = $this->getEqLogic()->getLogicalId();
+        if ($action === 'device.set') {
+            $fields = array('sn' => $sn, 'name' => $this->getConfiguration('property'));
+            if ($this->getSubType() === 'slider') $fields['value'] = (float)($_options['slider'] ?? 0);
+            elseif ($this->getSubType() === 'select') $fields['value'] = $_options['select'] ?? '';
+            else $fields['value'] = (bool)$this->getConfiguration('value', false);
+            return eufysdk::request('device.set', $fields);
+        }
+        if ($action === 'device.action') {
+            $fields = array('sn' => $sn, 'action' => $this->getConfiguration('deviceAction'));
+            if ($this->getSubType() === 'slider') {
+                $fields['args'] = array((int) ($_options['slider'] ?? $this->getConfiguration('minValue', 10)));
+            }
+            return eufysdk::request('device.action', $fields);
+        }
+        throw new Exception('Action non autorisée');
     }
 }

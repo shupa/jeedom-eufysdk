@@ -99,6 +99,10 @@ intégré, seul le texte/la réponse peut être saisi.
 - Découverte et création des équipements (caméras, stations, capteurs exposés par le SDK)
 - Propriétés **scalaires** en commandes info Jeedom ; synchronisation par minute (pas temps réel)
 - Commandes `ON`/`OFF` automatiques pour les propriétés booléennes modifiables du manifeste
+- Commandes **« Déclencher l'alarme »** (durée en secondes) / **« Arrêter l'alarme »** créées
+  automatiquement quand le bridge annonce la capacité `siren` sur l'équipement (HomeBase, ou
+  caméra rattachée à une HomeBase exposant le slot sirène) — ce n'est pas une propriété mais
+  une action (`device.action`), distincte des commandes ON/OFF ci-dessus
 - URL de snapshot en mode `stored` (réduit les réveils de caméras sur batterie)
 - État d'authentification, dernière synchro et logs
 - Saisie des identifiants Eufy (email/mot de passe/pays) et pilotage du bridge Docker
