@@ -136,13 +136,16 @@ compilé). **Ce correctif n'est pas vérifié sur du matériel réel** : rien ne
 sonne vraiment.
 
 **Historique des essais sur un vrai T84A1 (Wall Light Cam S100)** :
-- *Révision 1* (trame `CAMERA_TONE`/1202, comme une caméra attachée) : la commande est acceptée par
-  le bridge (`ok:true`) mais **aucun son** — mauvaise trame pour ce modèle autonome.
-- *Révision 2* (trame `CMD_SET_TONE_FILE`/1201, la trame "alarme de MA propre station", via
-  `homeBaseAlarm` déjà existant dans `@mega-yfue/eufy-sdk`) : à tester.
-- Si ça échoue aussi, la piste suivante documentée dans `siren.patch` est l'autre variante de
-  `triggerStationAlarmSound` (même commande 1201, mais en forme int-plus-string avec `value:2` /
-  `valueSub:secondes`, utilisée sur firmware ancien ou appareils « intégrés » reconnus).
+- *Révision 1* (trame `CAMERA_TONE`/1202, niveau 1, comme une caméra relayée par une HomeBase) :
+  acceptée par le bridge (`ok:true`) mais **aucun son** — mauvaise trame pour ce modèle autonome.
+- *Révision 2* (trame `CMD_SET_TONE_FILE`/1201 en `SET_PAYLOAD` niveau 2, via `homeBaseAlarm` déjà
+  existant) : échec différent — `StationKeyUnavailableError` : cet appareil n'établit jamais de clé
+  de session niveau 2 pour lui-même, donc toute commande chiffrée échoue quel que soit son contenu.
+- *Révision 3* (actuelle) : `CMD_SET_TONE_FILE`/1201 mais en forme **niveau 1** int-plus-string
+  (`value:2`, `valueSub:secondes`, canal `Station.CHANNEL`) — le même type de transport que la
+  révision 1 (pas de clé requise) mais avec le bon identifiant de commande et le bon mapping de
+  valeurs, construit par une nouvelle fonction `integratedStationAlarm` (ni `cameraAlarm` ni
+  `homeBaseAlarm` ne correspondait exactement à cette forme). À tester.
 
 ### Construire et tester
 
