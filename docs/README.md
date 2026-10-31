@@ -25,20 +25,25 @@ autoriser `www-data` à lancer `docker` sans mot de passe.
 
 Ensuite, dans **Plugins > Sécurité > Eufy SDK (Mega) > Configuration** :
 
-1. Saisir l'email, le mot de passe et le pays (`EUFY_COUNTRY`, le pays **du compte Eufy**,
+1. Vérifier le **port** du bridge (champ « Port », par défaut `3001`). Le conteneur
+   publie ce port vers son port interne `3000` (`ports: "${BRIDGE_PORT}:3000"` dans
+   `docker-compose.yml`) : pas besoin que ce soit `3000` côté hôte. **Si un autre bridge
+   Eufy tourne déjà sur cette machine** (par exemple le conteneur `eufy` /
+   `bropat/eufy-security-ws` utilisé par l'autre plugin Jeedom "eufy"), choisir un port
+   libre (3001, 3002…) pour éviter un conflit `EADDRINUSE`. Vérifier avec
+   `docker ps -a` et `sudo ss -ltnp | grep <port>` avant de démarrer.
+2. Saisir l'email, le mot de passe et le pays (`EUFY_COUNTRY`, le pays **du compte Eufy**,
    pas forcément celui où tourne Jeedom) du compte Eufy.
-2. Cliquer sur **Enregistrer et (re)démarrer le bridge** : le plugin écrit `docker/.env`
+3. Cliquer sur **Enregistrer et (re)démarrer le bridge** : le plugin écrit `docker/.env`
    (droits `600`, mot de passe stocké chiffré côté Jeedom via `utils::encrypt`) et lance
    `docker compose up -d` depuis son propre dossier `docker/`.
-3. L'état du bridge (OK/NOK) s'affiche sur la page ; **Démarrer/Arrêter le bridge** et
+4. L'état du bridge (OK/NOK) s'affiche sur la page ; **Démarrer/Arrêter le bridge** et
    **Synchroniser maintenant** permettent de piloter le conteneur sans terminal.
-4. En cas de demande de code 2FA ou de CAPTCHA, utiliser les champs dédiés
+5. En cas de demande de code 2FA ou de CAPTCHA, utiliser les champs dédiés
    (**Code reçu par 2FA** / **Réponse CAPTCHA**) puis **Valider** ; **Tester la connexion**
    affiche l'état d'authentification brut renvoyé par le bridge.
 
-Le réseau `host` du conteneur simplifie l'accès au service mais **expose aussi les ports du
-bridge** sur les interfaces de la machine. Pare-feu requis : **ne pas exposer le port 3000
-sur Internet**.
+Pare-feu requis dans tous les cas : **ne pas exposer le port du bridge sur Internet**.
 
 ### Cas B — Bridge sur une machine distincte (VM dédiée, NAS/Synology)
 
@@ -50,9 +55,10 @@ manuellement sur cette machine :
 ```bash
 cp docker/.env.example docker/.env
 chmod 600 docker/.env
-# éditer docker/.env avec l'identifiant, le mot de passe Eufy, le pays
+# éditer docker/.env avec l'identifiant, le mot de passe Eufy, le pays, et BRIDGE_PORT
+# (3001 par défaut ; choisir un port libre si un autre bridge Eufy tourne déjà dessus)
 docker compose -f docker/docker-compose.yml up -d
-curl http://<ip-du-nas>:3000/healthz
+curl http://<ip-du-nas>:3001/healthz
 ```
 
 Puis saisir dans la configuration du plugin l'IP LAN et le port de cette machine

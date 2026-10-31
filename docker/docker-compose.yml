@@ -2,7 +2,8 @@ services:
   eufy-sdk-bridge:
     image: ghcr.io/mega-yfue/ha-eufy-sdk-bridge:latest
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "${BRIDGE_PORT:-3001}:3000"
     environment:
       EUFY_EMAIL: ${EUFY_EMAIL}
       EUFY_PASSWORD: ${EUFY_PASSWORD}

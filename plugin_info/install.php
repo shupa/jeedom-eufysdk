@@ -1,7 +1,7 @@
 <?php
 function eufysdk_install() {
     config::save('bridge_host', '127.0.0.1', 'eufysdk');
-    config::save('bridge_port', '3000', 'eufysdk');
+    config::save('bridge_port', '3001', 'eufysdk');
     config::save('eufy_country', 'BE', 'eufysdk');
 }
 function eufysdk_update() {}

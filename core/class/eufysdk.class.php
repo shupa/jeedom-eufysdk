@@ -118,12 +118,15 @@ class eufysdk extends eqLogic {
         $email = trim((string) config::byKey('eufy_email', 'eufysdk'));
         $password = (string) utils::decrypt(config::byKey('eufy_password', 'eufysdk'));
         $country = strtoupper(trim((string) config::byKey('eufy_country', 'eufysdk', 'BE')));
+        $port = (int) config::byKey('bridge_port', 'eufysdk', '3001');
         if ($email === '' || $password === '') throw new Exception('Identifiants Eufy manquants');
         if (!preg_match('/^[A-Z]{2}$/', $country)) throw new Exception('Code pays Eufy invalide (2 lettres, ex: BE)');
+        if ($port < 1 || $port > 65535) throw new Exception('Port invalide');
         $strip = function ($v) { return str_replace(array("\r", "\n"), '', $v); };
         $content = 'EUFY_EMAIL=' . $strip($email) . "\n"
             . 'EUFY_PASSWORD=' . $strip($password) . "\n"
-            . 'EUFY_COUNTRY=' . $strip($country) . "\n";
+            . 'EUFY_COUNTRY=' . $strip($country) . "\n"
+            . 'BRIDGE_PORT=' . $port . "\n";
         $file = self::dockerEnvFile();
         file_put_contents($file, $content);
         chmod($file, 0600);
