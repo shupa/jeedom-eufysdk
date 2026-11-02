@@ -216,6 +216,27 @@ class eufysdk extends eqLogic {
         }
     }
 
+    /**
+     * Types génériques Jeedom (icônes/widgets + usage dans les scénarios, cf. docs/fr_FR/types.md du
+     * Core) pour les quelques commandes qui ont une correspondance claire et non ambiguë. Appliqués
+     * uniquement à la création de la commande (jamais en réécriture) : comme pour le nom de
+     * l'équipement, un type générique choisi/modifié à la main dans Jeedom ne doit pas être
+     * réinitialisé à chaque sync().
+     */
+    private static function stateGenericType($key) {
+        $map = array(
+            'light' => 'LIGHT_STATE',
+            'brightness' => 'LIGHT_BRIGHTNESS',
+            'armingMode' => 'ALARM_MODE',
+            'battery' => 'BATTERY',
+            'wifiRssi' => 'GENERIC_INFO',
+        );
+        return $map[$key] ?? null;
+    }
+    private static function actionGenericType($property, $on) {
+        if ($property === 'light') return $on ? 'LIGHT_ON' : 'LIGHT_OFF';
+        return null;
+    }
     private static function syncActions($eq, $sn, $capabilities = array()) {
         $manifest = self::request('device.properties', array('sn' => $sn));
         foreach (($manifest['properties'] ?? array()) as $prop) {
@@ -231,6 +252,8 @@ class eufysdk extends eqLogic {
                 $cmd->setConfiguration('bridge_action', 'device.set');
                 $cmd->setConfiguration('property', $prop['name']);
                 $cmd->setConfiguration('value', $on ? 1 : 0);
+                $generic = self::actionGenericType($prop['name'], $on);
+                if ($generic !== null) $cmd->setGeneric_type($generic);
                 $cmd->setIsVisible(1); $cmd->save();
             }
         }
@@ -251,6 +274,7 @@ class eufysdk extends eqLogic {
                 $cmd->setConfiguration('minValue', 1);
                 $cmd->setConfiguration('maxValue', 300);
                 $cmd->setUnite('s');
+                $cmd->setGeneric_type('SIREN_ON');
                 $cmd->setIsVisible(1);
                 $cmd->save();
             }
@@ -264,6 +288,7 @@ class eufysdk extends eqLogic {
                 $cmd->setSubType('other');
                 $cmd->setConfiguration('bridge_action', 'device.action');
                 $cmd->setConfiguration('deviceAction', 'stop');
+                $cmd->setGeneric_type('SIREN_OFF');
                 $cmd->setIsVisible(1);
                 $cmd->save();
             }
@@ -309,6 +334,8 @@ class eufysdk extends eqLogic {
                     $cmd->setName($key);
                     $cmd->setType('info');
                     $cmd->setSubType(is_bool($value) ? 'binary' : (is_numeric($value) ? 'numeric' : 'string'));
+                    $generic = self::stateGenericType($key);
+                    if ($generic !== null) $cmd->setGeneric_type($generic);
                     $cmd->setIsVisible(1);
                     $cmd->save();
                 }
@@ -320,7 +347,9 @@ class eufysdk extends eqLogic {
                 if (!is_object($cmd)) {
                     $cmd = new eufysdkCmd(); $cmd->setEqLogic_id($eq->getId());
                     $cmd->setLogicalId('snapshot'); $cmd->setName('Snapshot URL');
-                    $cmd->setType('info'); $cmd->setSubType('string'); $cmd->save();
+                    $cmd->setType('info'); $cmd->setSubType('string');
+                    $cmd->setGeneric_type('CAMERA_URL');
+                    $cmd->save();
                 }
                 $host = config::byKey('bridge_host', 'eufysdk', '127.0.0.1');
                 $port = (int) config::byKey('bridge_port','eufysdk','3000');

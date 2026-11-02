@@ -210,3 +210,14 @@ Les icônes par modèle (`core/config/devices/<modèle>.png`, ex. `T84A1.png`) e
 `eufysdk::getImage()` résout l'icône à partir des 5 premiers caractères du numéro de série de
 l'équipement (ex. "T84A1" dans "T84A1P1024330BE7"), avec repli sur l'icône du plugin si aucune image
 ne correspond au modèle.
+
+## Types génériques des commandes
+
+Quelques commandes reçoivent un [type générique](https://doc.jeedom.com/fr_FR/core/4.4/types) Jeedom
+à leur création (jamais réécrit ensuite, pour ne pas écraser un choix fait à la main) :
+`light`→`LIGHT_STATE`/`LIGHT_ON`/`LIGHT_OFF`, `brightness`→`LIGHT_BRIGHTNESS`, `armingMode`→`ALARM_MODE`,
+`battery`→`BATTERY`, `wifiRssi`→`GENERIC_INFO`, `snapshot`→`CAMERA_URL`, alarme déclencher/arrêter→
+`SIREN_ON`/`SIREN_OFF`. Volontairement limité aux correspondances non ambiguës (voir
+`eufysdk::stateGenericType()`/`actionGenericType()`) — les autres propriétés Eufy (détection de
+mouvement en tant que *réglage*, micro, haut-parleur, vision nocturne, etc.) n'ont pas d'équivalent
+clair dans le catalogue du Core et restent sans type générique plutôt que d'en forcer un approximatif.
