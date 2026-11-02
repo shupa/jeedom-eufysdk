@@ -6,9 +6,9 @@
 # du déclenchement/arrêt de l'appli officielle, déchiffrée avec la clé P2P niveau 1 de la session
 # (voir le commentaire au-dessus de isSelfStationWallLightCam dans siren.patch pour le détail).
 #
-# Construire :
-#   docker compose -f ../docker-compose.custom-bridge.yml build
-# (voir ce fichier pour l'utiliser à la place de l'image publique)
+# C'est l'image par défaut de ../docker-compose.yml (voir ce fichier) depuis que le correctif a été
+# wire-confirmé sur du matériel réel. Reconstruire manuellement :
+#   docker compose -f ../docker-compose.yml build
 
 FROM node:24-alpine AS sdk-build
 RUN apk add --no-cache git

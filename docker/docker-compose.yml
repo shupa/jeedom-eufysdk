@@ -1,6 +1,12 @@
 services:
   eufy-sdk-bridge:
-    image: ghcr.io/mega-yfue/ha-eufy-sdk-bridge:latest
+    # Image custom (fork patché de @mega-yfue/eufy-sdk, voir docker/custom-bridge/) au lieu de l'image
+    # publique ghcr.io/mega-yfue/ha-eufy-sdk-bridge : nécessaire pour l'alarme des Wall Light Cam
+    # autonomes (T84A1/T84A0/S100), wire-confirmée sur du matériel réel (voir docs/README.md). Le
+    # premier démarrage la construit (quelques minutes) ; `plugin_info/install_dependencies.sh` la
+    # pré-construit déjà lors de l'installation des dépendances pour éviter ce délai au démarrage.
+    build:
+      context: ./custom-bridge
     restart: unless-stopped
     ports:
       - "${BRIDGE_PORT:-3001}:3000"

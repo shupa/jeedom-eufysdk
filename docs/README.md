@@ -121,7 +121,7 @@ intégré, seul le texte/la réponse peut être saisi.
 - Le script Python établit une nouvelle connexion WebSocket à chaque requête. Cette V0 n'est pas destinée aux gros parcs : optimisation ultérieure par démon persistent.
 - Des changements de protocole dans le bridge peuvent nécessiter une adaptation.
 
-## Essai expérimental : alarme sur Wall Light Cam (T84A1 / T84A0 / S100)
+## Alarme sur Wall Light Cam (T84A1 / T84A0 / S100)
 
 Le bridge officiel n'expose pas de commande d'alarme pour les Wall Light Cam autonomes (pas de
 capacité `siren` dans `devices.list`), car `@mega-yfue/eufy-sdk` ne reconnaît cette sirène que sur
@@ -130,10 +130,15 @@ appareil auto-hébergé (sa propre « station ») comme une station déclenchant
 (`CMD_SET_TONE_FILE`/1201), pas comme un hub qui relaie vers un autre appareil (1202) — seul ce cas
 « la caméra est sa propre station » n'est pas codé côté `@mega-yfue/eufy-sdk`.
 
-Le dossier `docker/custom-bridge/` contient un correctif (`siren.patch`) qui ajoute ce cas, plus une
-image Docker qui le construit (fork source de `eufy-sdk` + `ha-eufy-sdk-bridge`, patché puis
-compilé). **Confirmé sonore sur un vrai T84A1** (révision 4, voir historique ci-dessous) — reconstruit
-depuis une capture réseau du déclenchement/arrêt de l'appli officielle, pas depuis une hypothèse.
+Le dossier `docker/custom-bridge/` contient un correctif (`siren.patch`) qui ajoute ce cas, et c'est
+l'image Docker que `docker/docker-compose.yml` construit **par défaut** (fork source de `eufy-sdk` +
+`ha-eufy-sdk-bridge`, patché puis compilé) — il n'y a plus d'image publique séparée à activer.
+**Confirmé sonore sur un vrai T84A1** (révision 4, voir historique ci-dessous) — reconstruit depuis
+une capture réseau du déclenchement/arrêt de l'appli officielle, pas depuis une hypothèse.
+
+Le premier démarrage construit l'image (quelques minutes) ; l'installation des dépendances du plugin
+(`plugin_info/install_dependencies.sh`) la pré-construit déjà en tâche de fond pour éviter ce délai
+au moment de démarrer le démon depuis l'interface Jeedom.
 
 **Historique des essais sur un vrai T84A1 (Wall Light Cam S100)** :
 - *Révision 1* (trame `CAMERA_TONE`/1202, niveau 1, comme une caméra relayée par une HomeBase) :
@@ -154,12 +159,15 @@ depuis une capture réseau du déclenchement/arrêt de l'appli officielle, pas d
   (`23`) et arrêt (`4`) — un sélecteur de sous-action, pas une valeur dérivée de la durée, donc
   reproduit tel quel plutôt que deviné. Voir `integratedStationAlarm()` dans `siren.patch`.
 
-### Construire et tester
+### Tester manuellement
+
+Le plugin construit et démarre déjà cette image via `eufysdk::deamon_start()` (bouton « Démarrer le
+bridge » / installation des dépendances). Pour un test manuel direct (hors Jeedom) :
 
 ```bash
 cd docker
 cp .env.example .env   # si pas déjà fait ; EUFY_EMAIL/PASSWORD/COUNTRY/BRIDGE_PORT
-docker compose -f docker-compose.custom-bridge.yml up -d --build
+docker compose up -d --build
 curl http://127.0.0.1:${BRIDGE_PORT:-3001}/healthz
 ```
 
@@ -176,20 +184,14 @@ sudo -u www-data /var/www/html/plugins/eufysdk/core/python/.venv/bin/python \
   --fields '{"sn":"<SN_DE_LA_CAM>","action":"trigger","args":[5]}'
 ```
 
-**Si la caméra sonne vraiment** : le plugin Jeedom n'a besoin d'aucune modification — `eufysdk::syncActions()`
-crée déjà les commandes « Déclencher l'alarme » / « Arrêter l'alarme » dès que le bridge annonce
-`siren` dans les capacités de l'équipement ; il suffit de pointer `docker-compose.yml` (ou la config
-du plugin) vers cette image custom au lieu de l'image publique, et de resynchroniser.
+`eufysdk::syncActions()` crée les commandes « Déclencher l'alarme » / « Arrêter l'alarme » dès que le
+bridge annonce `siren` dans les capacités de l'équipement — resynchroniser l'équipement après le
+premier démarrage sur la nouvelle image si elles n'apparaissent pas tout de suite.
 
-**Si elle ne sonne pas (ou erreur)** : c'est que la caméra a bien besoin d'un chemin différent
-(peut-être un autre `CommandType`, ou pas de sirène matérielle du tout sur ce modèle) — revenir à
-l'image publique (`docker-compose.yml`) et ouvrir un ticket upstream avec le résultat du test, sur
-https://github.com/mega-yfue/eufy-sdk, pour que les mainteneurs (qui ont accès à du vrai matériel
-pour vérifier) tranchent.
-
-Ce correctif n'est volontairement **pas** branché sur le pilotage automatique du bridge depuis
-Jeedom (`eufysdk::deamon_start()` utilise toujours `docker/docker-compose.yml`, l'image publique) :
-c'est une piste à tester manuellement, pas un comportement par défaut tant qu'il n'est pas vérifié.
+Si un autre modèle Wall Light Cam ne sonne pas avec ce correctif, le wire exact peut différer d'un
+modèle à l'autre : reprendre la méthode de capture réseau (voir historique ci-dessus, révision 4)
+plutôt que deviner, et envisager un ticket upstream avec le résultat sur
+https://github.com/mega-yfue/eufy-sdk.
 
 ## Vérification rapide
 
