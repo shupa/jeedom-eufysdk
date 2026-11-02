@@ -27,6 +27,23 @@ class eufysdk extends eqLogic {
         if (empty($decoded['ok'])) throw new Exception('Bridge : ' . ($decoded['error'] ?? 'erreur inconnue'));
         return $decoded;
     }
+    /**
+     * Icône de l'équipement : modèle (5 premiers caractères du numéro de série, ex. "T84A1" dans
+     * "T84A1P1024330BE7") si une image existe dans core/config/devices/, sinon l'icône du plugin.
+     * Mêmes images que le plugin jeedom/eufy (lxrootard/eufy, GPLv2) : core/config/devices/<modèle>.png.
+     */
+    public static function devicePicture($sn) {
+        $model = strtoupper(substr((string) $sn, 0, 5));
+        $file = dirname(__FILE__) . '/../config/devices/' . $model . '.png';
+        if ($model !== '' && is_file($file)) {
+            return 'plugins/eufysdk/core/config/devices/' . $model . '.png?ts=' . @filemtime($file);
+        }
+        $fallback = dirname(__FILE__) . '/../../plugin_info/eufysdk_icon.png';
+        return 'plugins/eufysdk/plugin_info/eufysdk_icon.png?ts=' . @filemtime($fallback);
+    }
+    public function getImage() {
+        return self::devicePicture($this->getLogicalId());
+    }
     public static function dependancy_info() {
         $py = dirname(__FILE__) . '/../python/.venv/bin/python';
         return array('state' => is_executable($py) ? 'ok' : 'nok');

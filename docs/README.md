@@ -201,3 +201,12 @@ curl -s http://127.0.0.1:3000/healthz
 ```
 
 Sources : https://github.com/mega-yfue/ha-eufy-sdk-bridge/blob/main/docs/ws-protocol.md et https://doc.jeedom.com/dev/fr_FR/plugin_template
+
+## Icônes des équipements
+
+Les icônes par modèle (`core/config/devices/<modèle>.png`, ex. `T84A1.png`) et l'icône du plugin
+(`plugin_info/eufysdk_icon.png`) viennent du plugin Jeedom
+[lxrootard/eufy](https://github.com/lxrootard/eufy) (GPLv2, voir `core/config/devices/LICENSE`).
+`eufysdk::getImage()` résout l'icône à partir des 5 premiers caractères du numéro de série de
+l'équipement (ex. "T84A1" dans "T84A1P1024330BE7"), avec repli sur l'icône du plugin si aucune image
+ne correspond au modèle.
