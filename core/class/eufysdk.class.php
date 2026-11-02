@@ -358,7 +358,11 @@ class eufysdk extends eqLogic {
         }
         config::save('last_sync', date('Y-m-d H:i:s'), 'eufysdk');
     }
-    public static function cron() {
+    // cronHourly (pas cron()) : la fraîcheur des états importe peu ici, et déclencher une action
+    // (ex. l'alarme) part toujours en direct vers le bridge, indépendamment de ce cycle — seule la
+    // découverte d'équipements et le rafraîchissement d'état en dépendent. Bouton "Synchroniser"
+    // dans la configuration du plugin pour forcer un refresh immédiat entre deux cycles.
+    public static function cronHourly() {
         try { self::sync(); } catch (Throwable $e) { log::add('eufysdk','error',$e->getMessage()); }
     }
 }
