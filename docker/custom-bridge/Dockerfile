@@ -17,6 +17,10 @@ ARG EUFY_SDK_REF=v0.5.0
 RUN git clone --depth 1 --branch ${EUFY_SDK_REF} https://github.com/mega-yfue/eufy-sdk.git .
 COPY siren.patch /tmp/siren.patch
 RUN git apply /tmp/siren.patch
+# Temporary: dumps the level-1 P2P encryption key for T84A1P1024330BE7 to stderr so a real-app packet
+# capture can be decrypted offline. Remove once the siren investigation is done.
+COPY debug-level1key.patch /tmp/debug-level1key.patch
+RUN git apply /tmp/debug-level1key.patch
 RUN npm install --ignore-scripts --no-audit --no-fund \
  && npm run build \
  && npm pack \

@@ -1,0 +1,15 @@
+diff --git a/src/transport/p2p/p2p-session.ts b/src/transport/p2p/p2p-session.ts
+index 0000000..0000000 100644
+--- a/src/transport/p2p/p2p-session.ts
++++ b/src/transport/p2p/p2p-session.ts
+@@ -579,6 +579,10 @@
+     this.level1Key = Buffer.from(p2pCommandEncryptionKey(cfg.stationSn, cfg.p2pDid));
+     this.logger = cfg.logger ?? noopLogger;
+     this.level2Pending = cfg.resolveCipherKey !== undefined;
++    if (cfg.stationSn === "T84A1P1024330BE7") {
++      // TEMP DEBUG: dump the level-1 key so we can decrypt a live capture offline. Remove after use.
++      console.error(`[DEBUG level1Key] ${cfg.stationSn} p2pDid=${cfg.p2pDid} key=${this.level1Key.toString("hex")}`);
++    }
+   }
+ 
+   /**
