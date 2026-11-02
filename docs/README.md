@@ -132,8 +132,8 @@ appareil auto-hébergé (sa propre « station ») comme une station déclenchant
 
 Le dossier `docker/custom-bridge/` contient un correctif (`siren.patch`) qui ajoute ce cas, plus une
 image Docker qui le construit (fork source de `eufy-sdk` + `ha-eufy-sdk-bridge`, patché puis
-compilé). **Ce correctif n'est pas vérifié sur du matériel réel** : rien ne garantit que la caméra
-sonne vraiment.
+compilé). **Confirmé sonore sur un vrai T84A1** (révision 4, voir historique ci-dessous) — reconstruit
+depuis une capture réseau du déclenchement/arrêt de l'appli officielle, pas depuis une hypothèse.
 
 **Historique des essais sur un vrai T84A1 (Wall Light Cam S100)** :
 - *Révision 1* (trame `CAMERA_TONE`/1202, niveau 1, comme une caméra relayée par une HomeBase) :
@@ -141,11 +141,18 @@ sonne vraiment.
 - *Révision 2* (trame `CMD_SET_TONE_FILE`/1201 en `SET_PAYLOAD` niveau 2, via `homeBaseAlarm` déjà
   existant) : échec différent — `StationKeyUnavailableError` : cet appareil n'établit jamais de clé
   de session niveau 2 pour lui-même, donc toute commande chiffrée échoue quel que soit son contenu.
-- *Révision 3* (actuelle) : `CMD_SET_TONE_FILE`/1201 mais en forme **niveau 1** int-plus-string
-  (`value:2`, `valueSub:secondes`, canal `Station.CHANNEL`) — le même type de transport que la
-  révision 1 (pas de clé requise) mais avec le bon identifiant de commande et le bon mapping de
-  valeurs, construit par une nouvelle fonction `integratedStationAlarm` (ni `cameraAlarm` ni
-  `homeBaseAlarm` ne correspondait exactement à cette forme). À tester.
+- *Révision 3* : `CMD_SET_TONE_FILE`/1201 en forme **niveau 1** int-plus-string, en reprenant
+  verbatim la branche « integrated device » d'`eufy-security-client` (`value:2`, `valueSub:secondes`,
+  canal `Station.CHANNEL`/255) : acceptée (`ok:true`) mais **aucun son** — bon identifiant de
+  commande, mauvais mapping de champs et mauvais canal pour ce modèle précis.
+- *Révision 4* (actuelle, **confirmée sonore**) : capture réseau du trafic P2P réel entre l'appli
+  officielle (iPhone, via `rvictl` + Wireshark) et la caméra pendant un déclenchement puis un arrêt
+  manuel. Les deux trames `CMD_SET_TONE_FILE`/1201 capturées ont été déchiffrées hors-ligne (AES-128-
+  ECB, clé = `stationSn[-7:] + p2pDid` — ajoutée temporairement en log de debug dans le bridge patché)
+  pour lire les champs en clair : `channel=0` (pas 255), `value` = durée en secondes (`30` sur le
+  déclenchement capturé, `0` sur l'arrêt), et un `valueSub` fixe qui diffère entre déclenchement
+  (`23`) et arrêt (`4`) — un sélecteur de sous-action, pas une valeur dérivée de la durée, donc
+  reproduit tel quel plutôt que deviné. Voir `integratedStationAlarm()` dans `siren.patch`.
 
 ### Construire et tester
 

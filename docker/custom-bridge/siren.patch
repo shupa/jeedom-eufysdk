@@ -1,8 +1,8 @@
 diff --git a/src/model/capabilities/siren.ts b/src/model/capabilities/siren.ts
-index cd84bc8..9dd51cd 100644
+index cd84bc8..64e1860 100644
 --- a/src/model/capabilities/siren.ts
 +++ b/src/model/capabilities/siren.ts
-@@ -117,6 +117,50 @@ function isEvidencedAttachedCamera(ctx: CommandContext): boolean {
+@@ -117,6 +117,56 @@ function isEvidencedAttachedCamera(ctx: CommandContext): boolean {
    );
  }
  
@@ -10,20 +10,22 @@ index cd84bc8..9dd51cd 100644
 + * Standalone (self-station) Wall Light Cam device types — units that are their own station
 + * (`homeBaseAttached === false`) rather than hanging off a separate HomeBase.
 + *
-+ * UNVERIFIED on real hardware as of this patch, revision 3.
++ * WIRE-CONFIRMED on real hardware (T84A1), revision 4 — reverse-engineered from a packet capture of
++ * the official app's own trigger/stop, decrypted with the session's level-1 AES-128-ECB key:
 + * - Revision 1 routed this through {@link cameraAlarm} (`CAMERA_TONE`/1202, level-1 int-plus-string,
 + *   `ctx.channel`). Live test: `ok:true`, no sound — wrong command id/channel for this family.
 + * - Revision 2 routed it through {@link homeBaseAlarm} (`HOMEBASE_TONE`/1201, level-2 `SET_PAYLOAD`).
 + *   Live test: `StationKeyUnavailableError` — this device's P2P session never completes a level-2
 + *   key handshake for itself, so ANY level-2 command dies here regardless of its payload.
-+ * - Revision 3 (this one): `eufy-security-client`'s `Station.triggerStationAlarmSound` has a THIRD
-+ *   wire, taken for firmware older than 2.0.7.9 or a device on its `isIntegratedDeviceBySn`
-+ *   allowlist (which doesn't list the T84A1 prefix yet, hence revision 2's guess that firmware
-+ *   gating would pick the other branch — wrong on this unit): `CMD_SET_TONE_FILE`/1201 sent as a
-+ *   level-1 **int-plus-string** frame (`value: 2`, `valueSub: seconds`, channel `Station.CHANNEL`),
-+ *   the same transport kind as revision 1 (no key wait) but the right command id and value mapping.
-+ *   Built by {@link integratedStationAlarm} below, since neither {@link cameraAlarm} nor
-+ *   {@link homeBaseAlarm} matches this exact wire.
++ * - Revision 3 guessed `eufy-security-client`'s "integrated device" int-string branch verbatim
++ *   (`value: 2`, `valueSub: seconds`, channel `Station.CHANNEL`/255). Live test: `ok:true`, no sound
++ *   — same command id as the real wire, but the wrong field mapping and the wrong channel.
++ * - Revision 4 (this one) replays the captured real wire exactly: `CMD_SET_TONE_FILE`/1201, level-1
++ *   int-plus-string, **`channel: 0`** (not 255), `value` = duration in seconds (`30` on the captured
++ *   trigger, `0` on the captured stop — `0` reads naturally as "no duration" for a stop), and a fixed
++ *   `valueSub` the capture shows differs between trigger (`23`) and stop (`4`) — evidently a sub-action
++ *   selector, not something derived from the duration, so it is reproduced as a literal constant
++ *   rather than guessed at. No `strValue` was present (zero-padded). Live test: confirmed audible.
 + */
 +function isSelfStationWallLightCam(ctx: CommandContext): boolean {
 +  return (
@@ -33,27 +35,31 @@ index cd84bc8..9dd51cd 100644
 +  );
 +}
 +
++/** Sub-action selector the real app sends in `valueSub` alongside {@link SIREN_CMD.HOMEBASE_TONE} on a
++ * self-station Wall Light Cam — wire-captured, not derived from the duration (see
++ * {@link isSelfStationWallLightCam}'s doc comment for how these were recovered). */
++const SELF_STATION_TONE_SUB = { trigger: 23, stop: 4 } as const;
++
 +/**
-+ * The "integrated device" branch of `eufy-security-client`'s `triggerStationAlarmSound`: a level-1
-+ * int-plus-string frame on `CMD_SET_TONE_FILE` (the same command id as {@link homeBaseAlarm}, but a
-+ * different wire shape — no level-2 key required). `value: 2` is a fixed selector this branch always
-+ * sends (not a duration); `seconds` travels in `valueSub`. A duration of `0` stops a sounding alarm,
-+ * mirroring `resetStationAlarmSound()` (`triggerStationAlarmSound(0)`).
++ * The real self-station Wall Light Cam wire for `CMD_SET_TONE_FILE`/1201, recovered from a packet
++ * capture of the official app (see {@link isSelfStationWallLightCam}'s doc comment): level-1
++ * int-plus-string, `channel: 0`, `value` = duration in seconds (`0` to stop), `valueSub` a fixed
++ * sub-action selector that differs between trigger and stop.
 + */
 +function integratedStationAlarm(seconds: number): Command {
 +  return {
 +    kind: "p2p-int-string",
 +    cmd: SIREN_CMD.HOMEBASE_TONE,
-+    value: 2,
-+    valueSub: seconds,
-+    channel: STATION_CHANNEL,
++    value: seconds,
++    valueSub: seconds === 0 ? SELF_STATION_TONE_SUB.stop : SELF_STATION_TONE_SUB.trigger,
++    channel: 0,
 +  };
 +}
 +
  /** Whether a model-side record or bound context reports a specific parameter. */
  function reportsParam(
    source: { params?: Record<number, string>; paramIds?: ReadonlySet<number> },
-@@ -191,12 +235,13 @@ function cameraAlarm(seconds: number, ctx: CommandContext): Command {
+@@ -191,12 +241,13 @@ function cameraAlarm(seconds: number, ctx: CommandContext): Command {
  }
  
  /** Alarm-output protocol families admitted by runtime evidence. */
@@ -68,7 +74,7 @@ index cd84bc8..9dd51cd 100644
    if (isEvidencedStandaloneSiren(ctx)) return "standalone";
    return undefined;
  }
-@@ -206,6 +251,7 @@ function triggerAlarm(seconds: number, ctx: CommandContext): Command {
+@@ -206,6 +257,7 @@ function triggerAlarm(seconds: number, ctx: CommandContext): Command {
    const family = alarmOutputFamily(ctx);
    if (family === "homebase") return homeBaseAlarm(seconds, ctx);
    if (family === "camera") return cameraAlarm(seconds, ctx);
@@ -76,7 +82,7 @@ index cd84bc8..9dd51cd 100644
    throw new Error("manual alarm trigger has no verified wire for this device family");
  }
  
-@@ -214,6 +260,7 @@ function stopAlarm(ctx: CommandContext): Command {
+@@ -214,6 +266,7 @@ function stopAlarm(ctx: CommandContext): Command {
    const family = alarmOutputFamily(ctx);
    if (family === "homebase") return homeBaseAlarm(0, ctx);
    if (family === "camera") return cameraAlarm(0, ctx);
@@ -84,7 +90,7 @@ index cd84bc8..9dd51cd 100644
    if (family === "standalone") return sirenPayload(SIREN_CMD.MANUAL_STOP, {}, ctx);
    throw new Error("manual alarm stop has no verified wire for this device family");
  }
-@@ -368,7 +415,7 @@ export const SIREN_MEMBERS = {
+@@ -368,7 +421,7 @@ export const SIREN_MEMBERS = {
            await sink.dispatch(triggerAlarm(validateTriggerDuration(seconds), ctx));
          },
        "Trigger the alarm for a positive whole-number duration in seconds.",
@@ -93,7 +99,7 @@ index cd84bc8..9dd51cd 100644
      ),
      args: [{ name: "seconds", kind: "seconds", min: 1, description: "A positive whole-number duration." }],
    },
-@@ -391,14 +438,22 @@ export const SIREN: CapabilityModule = {
+@@ -391,14 +444,22 @@ export const SIREN: CapabilityModule = {
    description: "Audible alarm output with evidence-bounded state, configuration, test, trigger, and stop members.",
    members: SIREN_MEMBERS,
    properties: propertiesOf(SIREN_MEMBERS),

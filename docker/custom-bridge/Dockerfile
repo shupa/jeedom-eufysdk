@@ -2,9 +2,9 @@
 # d'alarme (siren trigger/stop) pour les Wall Light Cam autonomes (T84A1 / T84A0 / S100), que le
 # projet upstream n'expose pas encore pour ce modèle (voir siren.patch).
 #
-# NON VÉRIFIÉ sur du matériel réel au moment de l'écriture : le correctif s'appuie sur la table de
-# commandes d'eufy-security-client (qui liste bien DeviceTriggerAlarmSound pour ce DeviceType) mais
-# personne n'a confirmé que la caméra sonne réellement. À tester, pas à déployer en confiance.
+# WIRE-CONFIRMÉ sur du matériel réel (T84A1) : la trame a été reconstruite depuis une capture réseau
+# du déclenchement/arrêt de l'appli officielle, déchiffrée avec la clé P2P niveau 1 de la session
+# (voir le commentaire au-dessus de isSelfStationWallLightCam dans siren.patch pour le détail).
 #
 # Construire :
 #   docker compose -f ../docker-compose.custom-bridge.yml build
@@ -17,10 +17,6 @@ ARG EUFY_SDK_REF=v0.5.0
 RUN git clone --depth 1 --branch ${EUFY_SDK_REF} https://github.com/mega-yfue/eufy-sdk.git .
 COPY siren.patch /tmp/siren.patch
 RUN git apply /tmp/siren.patch
-# Temporary: dumps the level-1 P2P encryption key for T84A1P1024330BE7 to stderr so a real-app packet
-# capture can be decrypted offline. Remove once the siren investigation is done.
-COPY debug-level1key.patch /tmp/debug-level1key.patch
-RUN git apply /tmp/debug-level1key.patch
 RUN npm install --ignore-scripts --no-audit --no-fund \
  && npm run build \
  && npm pack \
