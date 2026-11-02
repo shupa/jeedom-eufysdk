@@ -271,8 +271,11 @@ class eufysdk extends eqLogic {
                 $eq->setLogicalId($sn);
                 $eq->setIsEnable(1);
                 $eq->setIsVisible(1);
+                // Nom initial uniquement : un renommage dans Jeedom ne doit pas être écrasé par le
+                // nom du bridge au prochain sync (sinon chaque poll ré-impose l'ancien nom, et peut
+                // provoquer une collision "Duplicate entry" si deux équipements se disputent un nom).
+                $eq->setName($device['name'] ?? $sn);
             }
-            $eq->setName($device['name'] ?? $sn);
             $eq->setConfiguration('model', $device['model'] ?? '');
             $eq->setConfiguration('capabilities', $device['capabilities'] ?? array());
             $eq->save();
