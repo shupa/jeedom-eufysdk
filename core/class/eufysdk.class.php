@@ -115,7 +115,12 @@ class eufysdk extends eqLogic {
             . ' --env-file ' . escapeshellarg(self::dockerEnvFile())
             . ' ' . $args;
         $result = self::run($cmd);
-        log::add('eufysdk', 'info', 'docker compose ' . $args . ' => ' . $result['output']);
+        // 'ps -q' est un simple contrôle de santé (appelé env. toutes les 5 min par plugin::heartbeat(),
+        // le heartbeat interne de Jeedom pour tout plugin hasOwnDeamon) : le logguer en 'info' à
+        // chaque fois n'apporte rien et noie les vrais logs (démarrage/arrêt).
+        if (strpos(trim($args), 'ps -q') !== 0) {
+            log::add('eufysdk', 'info', 'docker compose ' . $args . ' => ' . $result['output']);
+        }
         if ($result['status'] !== 0) throw new Exception('Commande docker en échec : ' . $result['output']);
         return $result['output'];
     }
